@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dienstwagen-Kostenrechner — Unternehmersicht</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #f5f4f0;
+    --surface: #ffffff;
+    --surface2: #f0efe9;
+    --border: #e0dfd8;
+    --text: #1a1917;
+    --muted: #7a786e;
+    --accent-benzin: #c4501a;
+    --accent-diesel: #1a5fa8;
+    --accent-elektro: #1a7a52;
+    --accent-benzin-light: #fdf0eb;
+    --accent-diesel-light: #ebf2fc;
+    --accent-elektro-light: #e8f5ef;
+    --font: 'DM Sans', sans-serif;
+    --mono: 'DM Mono', monospace;
+    --radius: 10px;
+    --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.04);
+  }
+
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 1.25rem 2rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  header h1 {
+    font-size: 15px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+  }
+  header span {
+    font-size: 12px;
+    color: var(--muted);
+    background: var(--surface2);
+    padding: 3px 10px;
+    border-radius: 20px;
+  }
+  .header-note {
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: #1a7a52; }
+
+  .pdf-btn {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12px;
+    font-weight: 500;
+    font-family: var(--font);
+    color: var(--text);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 6px 14px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .pdf-btn:hover { background: var(--surface2); border-color: #bbb; }
+  .pdf-btn svg { flex-shrink: 0; }
+  .pdf-btn.loading { opacity: 0.6; pointer-events: none; }
+
+  input[type=text].name-input {
+    width: 100%;
+    font-size: 12px;
+    font-family: var(--font);
+    color: var(--text);
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 9px;
+    outline: none;
+    margin-bottom: 0.75rem;
+    transition: border-color 0.15s;
+  }
+  input[type=text].name-input:focus { border-color: #aaa; background: var(--surface); }
+
+  @media print {
+    header { position: static; }
+    .sidebar { display: none; }
+    .layout { grid-template-columns: 1fr; }
+    .pdf-btn { display: none; }
+    .main { padding: 1rem; }
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    gap: 0;
+    min-height: calc(100vh - 57px);
+  }
+
+  .sidebar {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 1.5rem;
+    overflow-y: auto;
+    position: sticky;
+    top: 57px;
+    height: calc(100vh - 57px);
+  }
+
+  .main {
+    padding: 2rem;
+    overflow-y: auto;
+  }
+
+  .section-label {
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 1.5rem 0 0.75rem;
+  }
+  .section-label:first-child { margin-top: 0; }
+
+  .input-group {
+    margin-bottom: 0.6rem;
+  }
+  .input-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 0.5rem;
+  }
+  .input-row label {
+    font-size: 12px;
+    color: var(--muted);
+    flex: 1;
+    min-width: 0;
+  }
+  .input-row .val {
+    font-size: 12px;
+    font-weight: 500;
+    font-family: var(--mono);
+    min-width: 70px;
+    text-align: right;
+    color: var(--text);
+  }
+  input[type=range] {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    outline: none;
+    margin-bottom: 0.4rem;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--text);
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  input[type=range]:hover::-webkit-slider-thumb { background: #555; }
+
+  .divider {
+    height: 1px;
+    background: var(--border);
+    margin: 1.25rem 0;
+  }
+
+  .cards-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .vehicle-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.25rem;
+    box-shadow: var(--shadow);
+    transition: border-color 0.2s;
+  }
+  .vehicle-card.winner {
+    border-width: 2px;
+  }
+  .vehicle-card.benzin.winner { border-color: var(--accent-benzin); }
+  .vehicle-card.diesel.winner { border-color: var(--accent-diesel); }
+  .vehicle-card.elektro.winner { border-color: var(--accent-elektro); }
+
+  .card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+  }
+  .badge {
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 3px 9px;
+    border-radius: 20px;
+  }
+  .badge-benzin { background: var(--accent-benzin-light); color: var(--accent-benzin); }
+  .badge-diesel { background: var(--accent-diesel-light); color: var(--accent-diesel); }
+  .badge-elektro { background: var(--accent-elektro-light); color: var(--accent-elektro); }
+
+  .winner-tag {
+    font-size: 10px;
+    font-weight: 500;
+    background: #eaf5ef;
+    color: #1a7a52;
+    padding: 2px 8px;
+    border-radius: 20px;
+  }
+
+  .card-name {
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: 0.35rem;
+  }
+  .card-total {
+    font-size: 26px;
+    font-weight: 300;
+    letter-spacing: -0.02em;
+    font-family: var(--mono);
+    margin-bottom: 2px;
+  }
+  .card-sub {
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 1rem;
+  }
+  .cost-breakdown {
+    border-top: 1px solid var(--border);
+    padding-top: 0.75rem;
+  }
+  .cost-line {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    padding: 3px 0;
+    color: var(--muted);
+  }
+  .cost-line .amount {
+    font-family: var(--mono);
+    color: var(--text);
+    font-size: 11px;
+  }
+  .cost-line.highlight {
+    color: var(--text);
+    font-weight: 500;
+    border-top: 1px solid var(--border);
+    margin-top: 4px;
+    padding-top: 6px;
+  }
+  .cost-line.highlight .amount { font-size: 12px; }
+
+  .info-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .info-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.25rem;
+    box-shadow: var(--shadow);
+  }
+  .info-box-title {
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 0.75rem;
+  }
+
+  .savings-line {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 5px 0;
+    font-size: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .savings-line:last-child { border-bottom: none; }
+  .savings-line .label { color: var(--muted); }
+  .savings-green { color: var(--accent-elektro); font-family: var(--mono); font-weight: 500; }
+  .savings-red { color: var(--accent-benzin); font-family: var(--mono); font-weight: 500; }
+
+  .tax-block {
+    background: var(--accent-elektro-light);
+    border-radius: 7px;
+    padding: 0.75rem 1rem;
+    margin-top: 0.75rem;
+  }
+  .tax-block p {
+    font-size: 11px;
+    color: #1a5040;
+    line-height: 1.6;
+  }
+  .tax-block strong { font-weight: 500; }
+
+  .chart-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.25rem;
+    box-shadow: var(--shadow);
+    margin-bottom: 1.5rem;
+  }
+  .chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+  }
+  .chart-title {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text);
+  }
+  .legend {
+    display: flex;
+    gap: 14px;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .legend-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+  }
+
+  .hint-box {
+    background: #fffbeb;
+    border: 1px solid #f0d88a;
+    border-radius: var(--radius);
+    padding: 1rem 1.25rem;
+    margin-bottom: 1.5rem;
+  }
+  .hint-box p { font-size: 12px; color: #7a6010; line-height: 1.7; }
+  .hint-box strong { font-weight: 500; }
+
+  .footer {
+    font-size: 11px;
+    color: var(--muted);
+    padding: 1rem 0 2rem;
+    line-height: 1.8;
+  }
+
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+    .sidebar { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--border); }
+    .cards-row { grid-template-columns: 1fr; }
+    .info-row { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Dienstwagen-Kostenrechner</h1>
+  <span>Unternehmersicht · netto · 36 Monate</span>
+  <div class="header-note">
+    <span class="dot"></span>
+    Alle Werte anpassbar
+  </div>
+  <button class="pdf-btn" id="pdfBtn" onclick="exportPDF()">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 12H3a1 1 0 01-1-1V3a1 1 0 011-1h7l3 3v6a1 1 0 01-1 1h-1"/>
+      <path d="M8 9v5M6 11l2 3 2-3"/>
+    </svg>
+    Als PDF exportieren
+  </button>
+</header>
+
+<div class="layout">
+
+  <aside class="sidebar">
+    <div class="section-label">Fahrzeugbezeichnungen</div>
+    <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">Benziner</label>
+    <input type="text" class="name-input" id="name-b" value="VW Tiguan Benzin" oninput="calc()">
+    <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">Diesel</label>
+    <input type="text" class="name-input" id="name-d" value="VW Tiguan Diesel" oninput="calc()">
+    <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">Elektro</label>
+    <input type="text" class="name-input" id="name-e" value="Elektro (Vergleich)" oninput="calc()">
+    <div class="divider"></div>
+    <div class="section-label">Leasingraten (netto/Monat)</div>
+    <div class="input-row"><label>Benziner</label><span class="val" id="v-lb">480 €</span></div>
+    <input type="range" min="200" max="1000" step="10" value="480" id="lb">
+    <div class="input-row"><label>Diesel</label><span class="val" id="v-ld">500 €</span></div>
+    <input type="range" min="200" max="1000" step="10" value="500" id="ld">
+    <div class="input-row"><label>Elektro</label><span class="val" id="v-le">580 €</span></div>
+    <input type="range" min="200" max="1100" step="10" value="580" id="le">
+
+    <div class="divider"></div>
+    <div class="section-label">Jahreskilometer & Verbrauch</div>
+    <div class="input-row"><label>Jahreskilometer</label><span class="val" id="v-km">42.000 km</span></div>
+    <input type="range" min="10000" max="60000" step="1000" value="42000" id="km">
+    <div class="input-row"><label>Benziner (L/100 km)</label><span class="val" id="v-vb">8,0 L</span></div>
+    <input type="range" min="5" max="14" step="0.5" value="8" id="vb">
+    <div class="input-row"><label>Diesel (L/100 km)</label><span class="val" id="v-vd">6,5 L</span></div>
+    <input type="range" min="4" max="12" step="0.5" value="6.5" id="vd">
+    <div class="input-row"><label>Elektro (kWh/100 km)</label><span class="val" id="v-ve">20,0 kWh</span></div>
+    <input type="range" min="14" max="32" step="0.5" value="20" id="ve">
+
+    <div class="divider"></div>
+    <div class="section-label">Energiepreise (netto)</div>
+    <div class="input-row"><label>Benzinpreis (€/L)</label><span class="val" id="v-pb">1,75 €</span></div>
+    <input type="range" min="1.30" max="2.30" step="0.01" value="1.75" id="pb">
+    <div class="input-row"><label>Dieselpreis (€/L)</label><span class="val" id="v-pd">1,60 €</span></div>
+    <input type="range" min="1.20" max="2.20" step="0.01" value="1.60" id="pd">
+    <div class="input-row"><label>Wallbox-Strom (€/kWh)</label><span class="val" id="v-ps">0,30 €</span></div>
+    <input type="range" min="0.15" max="0.45" step="0.01" value="0.30" id="ps">
+
+    <div class="divider"></div>
+    <div class="section-label">Kfz-Steuer (€/Jahr)</div>
+    <div class="input-row"><label>Benziner</label><span class="val" id="v-stb">250 €</span></div>
+    <input type="range" min="0" max="800" step="10" value="250" id="stb">
+    <div class="input-row"><label>Diesel</label><span class="val" id="v-std">300 €</span></div>
+    <input type="range" min="0" max="800" step="10" value="300" id="std">
+    <div class="input-row"><label>Elektro</label><span class="val" id="v-ste">0 €</span></div>
+    <input type="range" min="0" max="200" step="5" value="0" id="ste">
+
+    <div class="divider"></div>
+    <div class="section-label">Bruttolistenpreis (für GwV-Berechnung)</div>
+    <div class="input-row"><label>Benziner BLP</label><span class="val" id="v-blpb">42.000 €</span></div>
+    <input type="range" min="20000" max="90000" step="1000" value="42000" id="blpb">
+    <div class="input-row"><label>Diesel BLP</label><span class="val" id="v-blpd">45.000 €</span></div>
+    <input type="range" min="20000" max="90000" step="1000" value="45000" id="blpd">
+    <div class="input-row"><label>Elektro BLP</label><span class="val" id="v-blpe">50.000 €</span></div>
+    <input type="range" min="20000" max="90000" step="1000" value="50000" id="blpe">
+    <div class="input-row"><label>Grenzsteuersatz Fahrer</label><span class="val" id="v-gst">35 %</span></div>
+    <input type="range" min="20" max="45" step="1" value="35" id="gst">
+  </aside>
+
+  <main class="main">
+
+    <div id="cards-container" class="cards-row"></div>
+
+    <div class="info-row">
+      <div class="info-box">
+        <div class="info-box-title">Kostenvergleich über 36 Monate (Unternehmen)</div>
+        <div id="savings-block"></div>
+      </div>
+      <div class="info-box">
+        <div class="info-box-title">Steuerlicher Vorteil Elektro (1%-Regelung)</div>
+        <div id="tax-block"></div>
+      </div>
+    </div>
+
+    <div class="chart-box">
+      <div class="chart-header">
+        <span class="chart-title">Kostenstruktur über 36 Monate (gestapelt)</span>
+        <div class="legend">
+          <span class="legend-item"><span class="legend-dot" style="background:#c4501a"></span>Benziner</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#1a5fa8"></span>Diesel</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#1a7a52"></span>Elektro</span>
+        </div>
+      </div>
+      <div style="position:relative;height:240px"><canvas id="stackChart"></canvas></div>
+    </div>
+
+    <div class="chart-box">
+      <div class="chart-header">
+        <span class="chart-title">Kumulierte Gesamtkosten über 36 Monate</span>
+        <div class="legend">
+          <span class="legend-item"><span class="legend-dot" style="background:#c4501a"></span>Benziner</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#1a5fa8"></span>Diesel</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#1a7a52"></span>Elektro</span>
+        </div>
+      </div>
+      <div style="position:relative;height:240px"><canvas id="lineChart"></canvas></div>
+    </div>
+
+    <div class="hint-box">
+      <p>
+        <strong>Vorsteuerabzug:</strong> Als vorsteuerabzugsberechtigtes Unternehmen können Leasingraten, Kraftstoff und Wartung (bei betrieblicher Nutzung) i.d.R. vollständig aus der Umsatzsteuer abgezogen werden. Bei gemischter Nutzung gilt der prozentuale Anteil der betrieblichen Fahrten. Alle Werte hier sind daher <strong>netto (ohne MwSt.)</strong> angegeben.<br>
+        <strong>Geldwerter Vorteil:</strong> Der GwV ist ein Arbeitnehmer-Aufwand, kein direkter Unternehmensaufwand — er ist aber indirekt relevant, weil er die Attraktivität des Dienstfahrzeugs als Gehaltsbestandteil beeinflusst.<br>
+        <strong>Elektro-Steuerfreiheit:</strong> Rein elektrische Fahrzeuge sind bis 2030 von der Kfz-Steuer befreit. Die 0,25%-Regelung gilt bis BLP 70.000 €.
+      </p>
+    </div>
+
+    <div class="footer">
+      Alle Angaben ohne Gewähr. Keine Steuer- oder Rechtsberatung. Wartungskosten geschätzt: Benziner 2,5 ct/km · Diesel 2,2 ct/km · Elektro 1,2 ct/km. Energiepreise netto. Stand: 2025/2026.
+    </div>
+
+  </main>
+</div>
+
+<script>
+let stackChart, lineChart;
+
+const n = (v) => Math.round(v).toLocaleString('de-DE');
+const eur = (v) => n(v) + ' €';
+const eurM = (v) => n(v) + ' €/Mo.';
+
+function getNames() {
+  return {
+    b: document.getElementById('name-b').value || 'Benziner',
+    d: document.getElementById('name-d').value || 'Diesel',
+    e: document.getElementById('name-e').value || 'Elektro'
+  };
+}
+
+async function exportPDF() {
+  const btn = document.getElementById('pdfBtn');
+  btn.classList.add('loading');
+  btn.textContent = 'Wird erstellt…';
+
+  const sidebar = document.querySelector('.sidebar');
+  const header = document.querySelector('header');
+  sidebar.style.display = 'none';
+  const layout = document.querySelector('.layout');
+  layout.style.gridTemplateColumns = '1fr';
+
+  await new Promise(r => setTimeout(r, 100));
+
+  const main = document.querySelector('.main');
+  const canvas = await html2canvas(main, { scale: 1.5, useCORS: true, backgroundColor: '#f5f4f0' });
+
+  sidebar.style.display = '';
+  layout.style.gridTemplateColumns = '';
+
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const pageW = 210, pageH = 297, margin = 10;
+  const imgW = pageW - margin * 2;
+  const imgH = (canvas.height / canvas.width) * imgW;
+
+  const names = getNames();
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(9);
+  pdf.setTextColor(120, 120, 110);
+  pdf.text('Dienstwagen-Kostenrechner — Unternehmersicht · netto · 36 Monate', margin, 7);
+  pdf.text(new Date().toLocaleDateString('de-DE'), pageW - margin, 7, { align: 'right' });
+
+  let yPos = 12;
+  let remaining = imgH;
+  let srcY = 0;
+  const scale = canvas.width / imgW;
+  const pageContent = pageH - margin - 12;
+
+  while (remaining > 0) {
+    const sliceH = Math.min(remaining, pageContent);
+    const slicePx = sliceH * scale;
+    const sliceCanvas = document.createElement('canvas');
+    sliceCanvas.width = canvas.width;
+    sliceCanvas.height = slicePx;
+    sliceCanvas.getContext('2d').drawImage(canvas, 0, srcY, canvas.width, slicePx, 0, 0, canvas.width, slicePx);
+    pdf.addImage(sliceCanvas.toDataURL('image/jpeg', 0.92), 'JPEG', margin, yPos, imgW, sliceH);
+    remaining -= sliceH;
+    srcY += slicePx;
+    if (remaining > 0) { pdf.addPage(); yPos = 12; }
+  }
+
+  const fname = `Dienstwagen_Vergleich_${names.b.replace(/\s+/g,'-')}_vs_${names.d.replace(/\s+/g,'-')}_vs_${names.e.replace(/\s+/g,'-')}.pdf`;
+  pdf.save(fname);
+
+  btn.classList.remove('loading');
+  btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12H3a1 1 0 01-1-1V3a1 1 0 011-1h7l3 3v6a1 1 0 01-1 1h-1"/><path d="M8 9v5M6 11l2 3 2-3"/></svg> Als PDF exportieren`;
+}
+
+function sliderVal(id) { return parseFloat(document.getElementById(id).value); }
+
+function update(id) {
+  const v = sliderVal(id);
+  const el = document.getElementById('v-' + id);
+  if (!el) return;
+  if (id === 'km') el.textContent = n(v) + ' km';
+  else if (id === 'vb' || id === 'vd') el.textContent = v.toFixed(1).replace('.', ',') + ' L';
+  else if (id === 've') el.textContent = v.toFixed(1).replace('.', ',') + ' kWh';
+  else if (id === 'pb' || id === 'pd' || id === 'ps') el.textContent = v.toFixed(2).replace('.', ',') + ' €';
+  else if (id === 'gst') el.textContent = Math.round(v) + ' %';
+  else el.textContent = n(v) + ' €';
+}
+
+function calc() {
+  const lb = sliderVal('lb'), ld = sliderVal('ld'), le = sliderVal('le');
+  const km = sliderVal('km');
+  const vb = sliderVal('vb'), vd = sliderVal('vd'), ve = sliderVal('ve');
+  const pb = sliderVal('pb'), pd = sliderVal('pd'), ps = sliderVal('ps');
+  const stb = sliderVal('stb'), std = sliderVal('std'), ste = sliderVal('ste');
+  const blpb = sliderVal('blpb'), blpd = sliderVal('blpd'), blpe = sliderVal('blpe');
+  const gst = sliderVal('gst') / 100;
+
+  const kmM = km / 12;
+  const kfzM_b = stb / 12, kfzM_d = std / 12, kfzM_e = ste / 12;
+
+  const kraftM_b = (vb / 100) * kmM * pb;
+  const kraftM_d = (vd / 100) * kmM * pd;
+  const kraftM_e = (ve / 100) * kmM * ps;
+
+  const wartM_b = km * 0.025 / 12;
+  const wartM_d = km * 0.022 / 12;
+  const wartM_e = km * 0.012 / 12;
+
+  const gvM_b = blpb * 0.01 * gst;
+  const gvM_d = blpd * 0.01 * gst;
+  const gvM_e = (blpe <= 70000 ? blpe * 0.0025 : blpe * 0.005) * gst;
+
+  const totM_b = lb + kraftM_b + wartM_b + kfzM_b;
+  const totM_d = ld + kraftM_d + wartM_d + kfzM_d;
+  const totM_e = le + kraftM_e + wartM_e + kfzM_e;
+
+  const tot36_b = totM_b * 36;
+  const tot36_d = totM_d * 36;
+  const tot36_e = totM_e * 36;
+
+  const minTot = Math.min(tot36_b, tot36_d, tot36_e);
+  const winner = minTot === tot36_b ? 'b' : (minTot === tot36_d ? 'd' : 'e');
+
+  function makeCard(type, name, leasing, kraft, wart, kfz, tot36, totM, blp, gvM, isWinner) {
+    const badgeClass = `badge-${type === 'b' ? 'benzin' : type === 'd' ? 'diesel' : 'elektro'}`;
+    const cardClass = `vehicle-card ${type === 'b' ? 'benzin' : type === 'd' ? 'diesel' : 'elektro'}${isWinner ? ' winner' : ''}`;
+    const label = type === 'b' ? 'Benziner' : type === 'd' ? 'Diesel' : 'Elektro';
+    const kraftLabel = type === 'e' ? 'Strom (Wallbox)' : type === 'd' ? 'Kraftstoff (Diesel)' : 'Kraftstoff (Benzin)';
+    const gvLabel = type === 'e' ? 'GwV (0,25%-Reg.)' : 'GwV (1%-Regelung)';
+    return `
+      <div class="${cardClass}">
+        <div class="card-top">
+          <span class="badge ${badgeClass}">${label}</span>
+          ${isWinner ? '<span class="winner-tag">Günstigster</span>' : ''}
+        </div>
+        <div class="card-name">${name}</div>
+        <div class="card-total">${eur(totM)}<span style="font-size:13px;color:var(--muted)">/Monat</span></div>
+        <div class="card-sub">${eur(tot36)} über 36 Monate</div>
+        <div class="cost-breakdown">
+          <div class="cost-line"><span>Leasing (netto)</span><span class="amount">${eur(leasing)}</span></div>
+          <div class="cost-line"><span>${kraftLabel}</span><span class="amount">${eur(kraft)}</span></div>
+          <div class="cost-line"><span>Wartung (Est.)</span><span class="amount">${eur(wart)}</span></div>
+          <div class="cost-line"><span>Kfz-Steuer</span><span class="amount">${eur(kfz)}</span></div>
+          <div class="cost-line highlight"><span>Gesamt/Monat</span><span class="amount">${eur(totM)}</span></div>
+          <div class="cost-line" style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)">
+            <span style="font-size:10px;color:var(--muted)">${gvLabel} Fahrer</span>
+            <span class="amount" style="font-size:10px;color:var(--muted)">${eur(gvM)}/Mo.</span>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  const names = getNames();
+
+  document.getElementById('cards-container').innerHTML =
+    makeCard('b', names.b, lb, kraftM_b, wartM_b, kfzM_b, tot36_b, totM_b, blpb, gvM_b, winner === 'b') +
+    makeCard('d', names.d, ld, kraftM_d, wartM_d, kfzM_d, tot36_d, totM_d, blpd, gvM_d, winner === 'd') +
+    makeCard('e', names.e, le, kraftM_e, wartM_e, kfzM_e, tot36_e, totM_e, blpe, gvM_e, winner === 'e');
+
+  const diff_eb = tot36_b - tot36_e;
+  const diff_ed = tot36_d - tot36_e;
+  const diff_bd = tot36_b - tot36_d;
+
+  function diffLine(label, amount) {
+    const pos = amount > 0;
+    return `<div class="savings-line"><span class="label">${label}</span><span class="${pos ? 'savings-green' : 'savings-red'}">${pos ? '+ ' : ''}${eur(amount)}</span></div>`;
+  }
+  document.getElementById('savings-block').innerHTML =
+    diffLine(`Elektro (${names.e}) vs. Benziner`, diff_eb) +
+    diffLine(`Elektro (${names.e}) vs. Diesel`, diff_ed) +
+    diffLine(`Diesel vs. Benziner`, diff_bd) +
+    `<div style="margin-top:10px;font-size:11px;color:var(--muted)">Positive Werte = erste Option günstiger</div>`;
+
+  const gwvSave_b = (gvM_b - gvM_e) * 36;
+  const gwvSave_d = (gvM_d - gvM_e) * 36;
+  document.getElementById('tax-block').innerHTML = `
+    <div class="savings-line"><span class="label">GwV Benziner/Monat</span><span style="font-family:var(--mono);font-size:12px">${eur(gvM_b)}</span></div>
+    <div class="savings-line"><span class="label">GwV Diesel/Monat</span><span style="font-family:var(--mono);font-size:12px">${eur(gvM_d)}</span></div>
+    <div class="savings-line"><span class="label">GwV Elektro/Monat</span><span style="font-family:var(--mono);font-size:12px">${eur(gvM_e)}</span></div>
+    <div class="tax-block">
+      <p>Fahrer spart <strong>${eur(gvM_b - gvM_e)}/Monat</strong> Netto-Steuer vs. Benziner.<br>
+      Über 36 Monate: <strong>${eur(gwvSave_b)}</strong> Steuervorteil für den Fahrer.<br>
+      (0,25%-Regelung gilt bis BLP 70.000 €, E-Auto bis mind. 2030)</p>
+    </div>`;
+
+  const stackLabels = ['Leasing', 'Kraftstoff/Strom', 'Wartung', 'Kfz-Steuer'];
+  const stackB = [lb * 36, kraftM_b * 36, wartM_b * 36, kfzM_b * 36];
+  const stackD = [ld * 36, kraftM_d * 36, wartM_d * 36, kfzM_d * 36];
+  const stackE = [le * 36, kraftM_e * 36, wartM_e * 36, kfzM_e * 36];
+
+  if (stackChart) stackChart.destroy();
+  stackChart = new Chart(document.getElementById('stackChart'), {
+    type: 'bar',
+    data: {
+      labels: stackLabels,
+      datasets: [
+        { label: names.b, data: stackB, backgroundColor: '#c4501a' },
+        { label: names.d, data: stackD, backgroundColor: '#1a5fa8' },
+        { label: names.e, data: stackE, backgroundColor: '#1a7a52' }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ' ' + Math.round(ctx.raw).toLocaleString('de-DE') + ' €' } } },
+      scales: {
+        x: { ticks: { font: { size: 11, family: 'DM Sans' }, autoSkip: false }, grid: { display: false } },
+        y: { ticks: { callback: v => (v / 1000).toFixed(0) + 'k', font: { size: 11 } }, grid: { color: 'rgba(0,0,0,0.05)' } }
+      }
+    }
+  });
+
+  const months = Array.from({length: 37}, (_, i) => i);
+  if (lineChart) lineChart.destroy();
+  lineChart = new Chart(document.getElementById('lineChart'), {
+    type: 'line',
+    data: {
+      labels: months,
+      datasets: [
+        { label: names.b, data: months.map(m => totM_b * m), borderColor: '#c4501a', backgroundColor: 'transparent', borderWidth: 2, pointRadius: 0, tension: 0.1 },
+        { label: names.d, data: months.map(m => totM_d * m), borderColor: '#1a5fa8', backgroundColor: 'transparent', borderWidth: 2, pointRadius: 0, tension: 0.1 },
+        { label: names.e, data: months.map(m => totM_e * m), borderColor: '#1a7a52', backgroundColor: 'transparent', borderWidth: 2, pointRadius: 0, tension: 0.1 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ' ' + Math.round(ctx.raw).toLocaleString('de-DE') + ' €' } } },
+      scales: {
+        x: { title: { display: true, text: 'Monat', font: { size: 11 } }, ticks: { callback: (v, i) => i % 6 === 0 ? i : '', font: { size: 11 } }, grid: { display: false } },
+        y: { ticks: { callback: v => (v / 1000).toFixed(0) + 'k €', font: { size: 11 } }, grid: { color: 'rgba(0,0,0,0.05)' } }
+      }
+    }
+  });
+}
+
+const ids = ['lb','ld','le','km','vb','vd','ve','pb','pd','ps','stb','std','ste','blpb','blpd','blpe','gst'];
+ids.forEach(id => {
+  document.getElementById(id).addEventListener('input', () => { update(id); calc(); });
+});
+
+calc();
+</script>
+</body>
+</html>
